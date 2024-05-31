@@ -9,37 +9,35 @@ const port = 3000;
 const app = next({ dev, hostname, port });
 const handler = app.getRequestHandler();
 
+let users = [];
+
 app.prepare().then(() => {
     const httpServer = createServer(handler);
 
     const io = new Server(httpServer);
 
-    io.use((socket, next) => {
-        const username = socket.handshake.auth.username;
-        if (!username) {
-            return next(new Error("invalid username"));
-        }
-        socket.username = username;
-        next();
-    });
-
     io.on("connection", (socket) => {
         console.log('New client connected', socket.id);
-        socket.on("request", (arg1, callback) => {
-            console.log("arg1", arg1);
-            callback("bbbbb")
-        });
-        const users = [];
-        for (let [id, socket] of io.of("/").sockets) {
-            users.push({
-                userID: id,
-                username: socket.username,
+        socket.emit("get-users", users);
+        socket.on("send-meesgae", (message, senderName, reciverName, callback) => {
+            console.log("send-meesgae", message, reciverName);
+            users.map((data) => {
+                if (data.name === senderName) {
+                    return data.messages.push({
+                        message: message,
+                        isSeened: false,
+                        reciverName: reciverName,
+                        senderId: socket.id,
+                    });
+                } 
+                return data
             });
-        }
-        socket.emit("users", users);
-        socket.broadcast.emit("user connected", {
-            userID: socket.id,
-            username: socket.username,
+            console.log("usersss",users);
+            callback({ status: "OK", data: users });
+        });
+        socket.on("user-store", (userData) => {
+            users.push(userData);
+            console.log("data stored", users);
         });
     });
 
