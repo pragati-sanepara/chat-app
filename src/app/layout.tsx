@@ -24,7 +24,7 @@ export default async function RootLayout({
     <html lang="en">
       <body className={`inter.className`} suppressHydrationWarning={true}>
         <SessionProvider>
-          <div className="w-10/12 m-auto text-center bg-white flex flex-col min-h-screen">
+          <div className="m-auto text-center bg-white flex flex-col min-h-screen">
             <div>
               {/* <Navbar /> */}
             </div>

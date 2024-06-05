@@ -2,6 +2,7 @@ import { getSession } from 'next-auth/react';
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import type { IncomingMessage, IncomingHttpHeaders } from 'http';
+import { cookies } from 'next/headers';
 
 function convertHeaders(headers: Headers): IncomingHttpHeaders {
     const result: IncomingHttpHeaders = {};
@@ -23,8 +24,10 @@ export async function middleware(request: NextRequest) {
     const adaptedRequest = adaptNextRequestToIncomingMessage(request);
     const session = await getSession({ req: adaptedRequest });
     const url = request.nextUrl.clone();
+    console.log("cokkk", cookies().get("userId"));
 
-    if (!session) {
+
+    if (!session && !cookies().get("userId")) {
         if (url.pathname !== '/') {
             url.pathname = '/';
             return NextResponse.redirect(url);
