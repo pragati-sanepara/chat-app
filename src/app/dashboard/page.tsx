@@ -1,17 +1,14 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import axios from 'axios';
-import { error } from "console";
 import React from "react";
 
 export default function Page() {
     let socket = useMemo(() => io(), []);
 
-    const router = useRouter();
-    const [selectedUser, setSelectedUser] = useState<any>();
+    const [selectedUser, setSelectedUser] = useState<{ _id: string, name: string }>();
     const [currentUser, setCurrentUser] = useState<any>('');
     const [searchUser, setSearchUser] = useState<any>('');
     const [currentMsg, setCurrentMsg] = useState('');
@@ -20,13 +17,27 @@ export default function Page() {
     const [conversationWithUsers, setConversationWithUsers] = useState<any[]>([]);
     const [messages, setMessages] = useState<any[]>([]);
 
+    const selectedUserRef = useRef(selectedUser);
+    const currentUserRef = useRef(currentUser);
+    const msgsDivRef = useRef<any>();
+
+    useEffect(() => {
+        selectedUserRef.current = selectedUser;
+    }, [selectedUser]);
+
+    useEffect(() => {
+        currentUserRef.current = currentUser;
+    }, [currentUser]);
+
     useEffect(() => {
         const userId = localStorage.getItem("userId");
         socket.auth = { userId };
+
         socket.on("connect", () => {
             console.log("socket.id", socket.id);
             socket.emit('join', userId);
         });
+
         socket.connect();
 
         axios.get(`api/user/get-all`)
@@ -34,60 +45,142 @@ export default function Page() {
                 setUsers(res.data);
             })
             .catch((error) => {
-                console.log("error", error);
+                console.error("error", error);
             });
 
-        getChat(userId);
+        getConversationWithUsers(userId);
+        getCurrentUserDetails(userId);
 
         return () => {
             socket.disconnect();
         };
     }, []);
 
-    useEffect(() => {
-        socket.on("message", (conversationData) => {
-            console.log("message", conversationData);
+    const triggerOnGetMessage = (conversationData: any, senderId: any, receiverId: any) => {
+        const selectedUser = selectedUserRef.current;
+        const currentUser = currentUserRef.current;
+
+        console.log("triggerOnGetMessage", selectedUser, currentUser);
+
+        if (selectedUser && ((selectedUser._id === senderId) || (selectedUser._id === receiverId))) {
+            setMessagesOnSend(conversationData, senderId, receiverId);
+        } else {
+            console.log("else elseelseelseelse", senderId, currentUser?._id);
+            if (currentUser && senderId !== currentUser?._id) {
+                getConversationWithUsers(receiverId);
+            }
+        }
+    };
+
+    const setMessagesOnSend = (conversationData: any, senderId: any, receiverId: any) => {
+        const selectedUser = selectedUserRef.current;
+        const currentUser = currentUserRef.current;
+
+        console.log("setMessagesOnSend", selectedUser, currentUser, senderId === receiverId, senderId === selectedUser?._id, receiverId === selectedUser?._id && selectedUser?._id !== currentUser._id);
+
+        if (senderId === receiverId || senderId === selectedUser?._id) {
+            getMessages(selectedUser, "select");
+            console.log("if condition", senderId === receiverId, senderId === selectedUser?._id);
+        } else if (receiverId === selectedUser?._id && selectedUser?._id !== currentUser._id) {
             setMessages(conversationData?.messages || []);
-        });
-        socket.on("online-user", (onlineUsersData) => {
+            console.log("else if condition", receiverId === selectedUser?._id, selectedUser?._id !== currentUser._id);
+        } else {
+            setMessages([]);
+            console.log("else condition");
+        }
+    };
+
+    useEffect(() => {
+        const handleNewMessage = (conversationData: any, senderId: any, receiverId: any) => {
+            console.log("message", conversationData, senderId, receiverId, selectedUserRef.current);
+            triggerOnGetMessage(conversationData, senderId, receiverId);
+        };
+
+        const handleOnlineUsers = (onlineUsersData: any) => {
             console.log("onlineUsersinside", onlineUsersData);
             setOnlineUsers(onlineUsersData);
-        });
-    }, []);
+        };
 
-    const getChat = (id: string | null) => {
-        if (!id) {
+        const handleSeenAckToSender = (senderId: any, receiverId: any) => {
+            const selectedUser = selectedUserRef.current;
+            console.log("ackno seen", senderId, receiverId, selectedUser);
+            if (selectedUser && selectedUser._id === receiverId) {
+                getMessages(selectedUser, "ack");
+            }
+        };
+
+        socket.on("message", handleNewMessage);
+        socket.on("online-user", handleOnlineUsers);
+        socket.on("seen-ack-to-sender", handleSeenAckToSender);
+
+        return () => {
+            socket.off("message", handleNewMessage);
+            socket.off("online-user", handleOnlineUsers);
+            socket.off("seen-ack-to-sender", handleSeenAckToSender);
+        };
+    }, [triggerOnGetMessage]);
+
+    const getConversationWithUsers = (currentUserId: string | null) => {
+        if (!currentUserId) {
             return;
         }
-        axios.post("api/conversation/get-by-id", { id })
+        axios.get(`api/conversation/get-count/${currentUserId}`)
             .then((res) => {
-                console.log("api/conversation/get-by-id", res);
                 setConversationWithUsers(res.data.conversation);
+            })
+            .catch((error) => {
+                console.error("error", error);
+            });
+    };
+
+    const getCurrentUserDetails = (currentUserId: string | null) => {
+        if (!currentUserId) {
+            return;
+        }
+        axios.get(`api/user/get-by-id/${currentUserId}`)
+            .then((res) => {
+                console.log("api/user/get-by-id", res);
                 setCurrentUser(res.data.user);
             })
             .catch((error) => {
-                console.log("error", error);
+                console.error("error", error);
             });
-    }
+    };
+
+    useEffect(() => {
+        const messageList = document.getElementById('message-list');
+        console.log("messageList", messageList?.scrollHeight);
+        if (messageList && messages.length > 0) {
+            messageList.scrollTo({ behavior: 'instant', top: messageList.scrollHeight });
+        }
+    }, [messages]);
+
+    const getMessages = (user: any, type: "select" | "ack") => {
+        axios.post("api/conversation/get-by-id-chat", { msgSentBy: currentUser._id, msgSentTo: user._id })
+            .then((res) => {
+                console.log("api/conversation/get-by-id-chat", res);
+                setMessages(res.data.conversation?.messages || []);
+                if (type === "select" && (currentUser._id !== user._id)) {
+                    socket.emit("seen-ack", user._id, currentUser._id);
+                    getConversationWithUsers(currentUser._id);
+                }
+            })
+            .catch((error) => {
+                console.error("error", error);
+            });
+    };
 
     const sendMessage = async () => {
         socket.emit("send-message", currentUser._id, selectedUser?._id, currentMsg);
         setCurrentMsg('');
     };
 
-    const handleSelectuser = (user: any) => {
+    const handleSelectUser = (user: { _id: string, name: string }) => {
         setSelectedUser(user);
-        axios.post("api/conversation/get-by-id-chat", { msgSentBy: currentUser._id, msgSentTo: user._id })
-            .then((res) => {
-                console.log("api/conversation/get-by-id-chat", res);
-                setMessages(res.data.conversation?.messages || []);
-            })
-            .catch((error) => {
-                console.log("error", error);
-            });
-    }
+        getMessages(user, "select");
+    };
 
-    const handleSearchuser = (event: any) => {
+    const handleSearchUser = (event: any) => {
         const { value }: { value: string } = event.target;
         setSearchUser(value);
         axios.get(`api/user/get-all?search=${value}`)
@@ -95,13 +188,16 @@ export default function Page() {
                 setUsers(res.data);
             })
             .catch((error) => {
-                console.log("error", error);
+                console.error("error", error);
             });
-    }
+    };
 
     const startChatWithUser = (user: any) => {
-        handleSelectuser(user);
-        setConversationWithUsers((prev) => [...prev, { ...user, new: true }]);
+        handleSelectUser({ name: user.name, _id: user._id });
+        setConversationWithUsers((prev) => [
+            ...prev,
+            { ...user, name: user.name, userId: user._id }
+        ]);
         setSearchUser("");
     }
 
@@ -110,14 +206,13 @@ export default function Page() {
             <div className="px-5 py-5 flex justify-between items-center bg-white border-b-2">
                 <div className="font-semibold text-2xl">GoingChat</div>
                 <div className="w-1/2">
-
                     <div className="relative">
                         <input
                             type="search"
                             name=""
                             id=""
                             value={searchUser}
-                            onChange={handleSearchuser}
+                            onChange={handleSearchUser}
                             placeholder="Search User"
                             className="rounded-2xl bg-gray-100 py-3 px-5 w-full"
                         />
@@ -137,52 +232,67 @@ export default function Page() {
             <div className="flex flex-row justify-between bg-white min-h-96">
                 <div className="flex flex-col w-2/5 border-r-2 overflow-y-auto">
                     {conversationWithUsers?.map((conversation: any) => {
-                        const userData: any = !conversation.new ? (conversation.senderId._id === currentUser._id ? conversation.receiverId : conversation.senderId) : conversation;
-                        return <div key={conversation._id} onClick={() => handleSelectuser(userData)}
+                        const conversationTime = new Date(conversation.lastmessage.updatedAt).toLocaleTimeString([], { timeStyle: 'short' });
+
+                        return <div key={conversation._id} onClick={() => handleSelectUser({ name: conversation.name, _id: conversation.userId })}
                             className="flex flex-row py-4 px-2 justify-center items-center border-b-2"
                         >
-                            <div className="w-1/4">
+                            <div className="w-20">
                                 <img
-                                    src="https://source.unsplash.com/_7LbC5J-jw4/600x600"
+                                    src="https://eu.ui-avatars.com/api/?name=John+Doe&size=250"
                                     className="object-cover h-12 w-12 rounded-full"
                                     alt=""
                                 />
+                                <div className={`${onlineUsers.includes(conversation.userId) ? "online" : "offline"} userStatus`}></div>
                             </div>
-                            <div className="w-full">
-                                <div className="text-lg font-semibold">{userData.name}</div>
-                                <span className="text-gray-500"> {onlineUsers.includes(userData._id) ? "on" : "off"} Pick me at 9:00 Am</span>
+                            <div className="w-9/12 text-left">
+                                <div className="flex items-center space-x-2 rtl:space-x-reverse">
+                                    <span className="text-lg font-semibold text-gray-900 dark:text-white">{conversation.name} {conversation.unseen ? ` (${conversation.unseen})` : null}</span>
+                                    <span className="text-sm font-normal text-gray-500 dark:text-gray-400">{conversationTime}</span>
+                                </div>
+                                <span className="text-gray-500 truncate block">{conversation.lastmessage?.text}</span>
                             </div>
                         </div>
                     })}
                 </div>
                 <div className="w-full px-5 flex flex-col justify-between">
-                    {selectedUser?._id ? <>
-                        <div className="flex flex-col mt-5">
-                            <div className="text-lg font-semibold">{selectedUser?.name}</div>
+                    {selectedUser && selectedUser?._id ? <>
+                        <div className="text-lg font-semibold">{selectedUser?.name}</div>
+                        <div className="flex flex-col mt-5 max-h-64 overflow-y-auto" id="message-list">
                             {messages.length ? messages.map((msg) => {
+                                const msgTime = new Date(msg.updatedAt).toLocaleTimeString([], { timeStyle: 'short' });
                                 return <React.Fragment key={msg._id}>
                                     {msg.receiverId !== selectedUser._id ?
                                         <div className="flex justify-start mb-4">
                                             <img
-                                                src="https://source.unsplash.com/vpOeXr5wmR4/600x600"
+                                                src="https://eu.ui-avatars.com/api/?name=John+Doe&size=250"
                                                 className="object-cover h-8 w-8 rounded-full"
                                                 alt=""
                                             />
                                             <div
-                                                className="ml-2 py-3 px-4 bg-gray-400 rounded-br-3xl rounded-tr-3xl rounded-tl-xl text-white"
+                                                className="max-w-lg w-full overflow-auto break-words whitespace-normal text-left ml-2 py-3 px-4 bg-gray-200 rounded-br-3xl rounded-tr-3xl rounded-tl-xl text-white"
                                             >
-                                                {msg.text}
+                                                <div className="flex items-center space-x-2 rtl:space-x-reverse">
+                                                    <span className="text-sm font-semibold text-gray-900 dark:text-white">{selectedUser.name}</span>
+                                                    <span className="text-sm font-normal text-gray-500 dark:text-gray-400">{msgTime}</span>
+                                                </div>
+                                                <p className="text-sm font-normal py-2.5 text-gray-900 dark:text-white">{msg.text}</p>
                                             </div>
                                         </div>
                                         :
                                         <div className="flex justify-end mb-4">
                                             <div
-                                                className="mr-2 py-3 px-4 bg-blue-400 rounded-bl-3xl rounded-tl-3xl rounded-tr-xl text-white"
+                                                className="max-w-lg w-full overflow-auto break-words whitespace-normal text-left mr-2 py-3 px-4 bg-blue-200 rounded-bl-3xl rounded-tl-3xl rounded-tr-xl text-white"
                                             >
-                                                {msg.text}
+                                                <div className="flex items-center space-x-2 rtl:space-x-reverse">
+                                                    <span className="text-sm font-semibold text-gray-900 dark:text-white">{currentUser.name}</span>
+                                                    <span className="text-sm font-normal text-gray-500 dark:text-gray-400">{msgTime}</span>
+                                                </div>
+                                                <p className="text-sm font-normal py-2.5 text-gray-900 dark:text-white">{msg.text}</p>
+                                                <span className="text-sm font-normal text-gray-500 dark:text-gray-400">{msg.seen ? "seen" : "unseen"}</span>
                                             </div>
                                             <img
-                                                src="https://source.unsplash.com/vpOeXr5wmR4/600x600"
+                                                src="https://eu.ui-avatars.com/api/?name=John+Doe&size=250"
                                                 className="object-cover h-8 w-8 rounded-full"
                                                 alt=""
                                             />

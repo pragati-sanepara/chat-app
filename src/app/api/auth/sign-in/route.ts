@@ -17,7 +17,7 @@ export async function POST(req: Request) {
             return Response.json({ message: "Password does not match" }, { status: HttpStatusCode.BadRequest });
         }
 
-        cookies().set("userId", user._id);
+        cookies().set("userId", user._id, { secure: true });
         return Response.json({ id: user._id, message: "Signin successfully" }, { status: 200 });
     } catch (error: any) {
         return Response.json({ message: error.message }, { status: HttpStatusCode.BadRequest });

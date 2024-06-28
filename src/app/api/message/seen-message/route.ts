@@ -8,7 +8,7 @@ export async function POST(request: Request) {
 
     try {
         const { msgSentBy, msgSentTo } = await request.json();
-        await Message.updateMany({
+        const messages = await Message.updateMany({
             $and: [
                 { senderId: msgSentTo },
                 { receiverId: msgSentBy },
@@ -17,14 +17,7 @@ export async function POST(request: Request) {
         }, {
             $set: { seen: true }
         });
-
-        const conversation = await Conversation.findOne({
-            $or: [
-                { senderId: msgSentBy, receiverId: msgSentTo },
-                { senderId: msgSentTo, receiverId: msgSentBy }
-            ]
-        }).populate("messages");
-        return Response.json({ conversation, message: "success" }, { status: 200 });
+        return Response.json({ messages, success: true }, { status: 200 });
     } catch (error: any) {
         return Response.json({ message: error.message }, { status: HttpStatusCode.BadRequest });
     }

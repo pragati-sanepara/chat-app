@@ -25,6 +25,7 @@ export default function Signin({ setIsSigninPage }: any) {
             .then(function (response: any) {
                 setUserDetails({ email: "", password: "" });
                 localStorage.setItem("userId", response.data.id);
+                router.push('/dashboard');
                 console.log("response.message", response.data.id, response.data.message);
             })
             .catch(function (error) {

@@ -1,8 +1,5 @@
 'use client'
 import { useEffect, useState } from "react";
-import { io } from "socket.io-client";
-
-let socket = io();
 
 export default function About() {
     const [messages, setMessages] = useState<any[]>([]);
@@ -12,33 +9,15 @@ export default function About() {
     const [currentMsg, setCurrentMsg] = useState('');
 
     useEffect(() => {
-        socket.on("connect", () => { });
-        console.log("sasasasasa", socket.connected);
-        socket.on("get-users", (usersData) => {
-            console.log("userData", usersData);
-            setUsers(usersData);
-        });
-        setCurentUserName(localStorage.getItem("currentUserData"));
+        
         return () => {
-            socket.on("disconnect", () => {
-                console.log("Disconneteddd");
-            });
+            
         };
     });
 
     const sendMessage = () => {
         console.log("message");
-        if (selectedUser) {
-            socket.timeout(1000).emit('send-meesgae', currentMsg, curentUserName, selectedUser.name, (err: any, res: any) => {
-                if (err) console.log("err", err);
-                else {
-                    console.log("res", res.status, res.data);
-                    const updatedData = res.data.find((data: any) => data.name === selectUser.name);
-                    setSelectedUser(updatedData);
-                }
-            });
-            setCurrentMsg('');
-        }
+        
     };
 
     const selectUser = (user: any) => {

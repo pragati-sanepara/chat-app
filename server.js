@@ -27,19 +27,23 @@ app.prepare().then(() => {
             io.emit("online-user", Array.from(onlineUser));
         });
 
-        socket.emit("get-users", users);
+        socket.on("seen-ack", (senderId, receiverid) => {
+            console.log("ackno seen", senderId);
+            socket.to(senderId).emit("seen-ack-to-sender", senderId, receiverid);
+        });
+
         socket.on("user-store", (userData) => {
             users.push(userData);
             console.log("data stored", users);
         });
+
         socket.on("send-message", async (currentUserId, id, msg) => {
             console.log("send-message", currentUserId, id, msg);
-
             axios.post(`${process.env.NEXTAUTH_URL}/api/message/send-message`, { msgSentBy: currentUserId, msgSentTo: id, message: msg })
                 .then((res) => {
                     console.log("api/message/send-message", res.data);
-                    io.to(currentUserId).emit("message", res.data.conversationData);
-                    io.to(id).emit('message', res.data.conversationData);
+                    io.to(currentUserId).emit("message", res.data.conversationData, currentUserId, id);
+                    io.to(id).emit('message', res.data.conversationData, currentUserId, id);
                 })
                 .catch((error) => {
                     console.log("error", error);

@@ -11,7 +11,7 @@ export async function POST(req: Request) {
             text: message,
             senderId: msgSentBy,
             receiverId: msgSentTo,
-            seen: false,
+            seen: msgSentBy === msgSentTo ? true : false,
         });
         let conversation = await Conversation.findOne({
             $or: [
